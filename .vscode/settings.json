@@ -1,0 +1,10 @@
+{
+    "python.pythonPath": "/home/kukuruzka/CODE/code_python/parsing/marketplace_parser_Alexander/.venv/bin/python",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    }
+}
