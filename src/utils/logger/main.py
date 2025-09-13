@@ -16,8 +16,8 @@ import logging
 from pathlib import Path
 
 from concurrent_log_handler import (
-    ConcurrentRotatingFileHandler,
-)  # потокобезопасное вращение
+    ConcurrentRotatingFileHandler,  # потокобезопасное вращение
+)
 
 # ──────────────────────────────
 # Параметры по умолчанию
@@ -27,7 +27,13 @@ _LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 _LOG_FILE = _LOG_DIR / "app.log"
 
-_LOG_LEVEL = logging.INFO
+try:
+    from src.utils.settings import SETTINGS
+
+    _LOG_LEVEL = SETTINGS.log_level
+except Exception:
+    _LOG_LEVEL = logging.INFO
+
 _LOG_FMT = "[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"
 
 _current_name: contextvars.ContextVar[str] = contextvars.ContextVar(

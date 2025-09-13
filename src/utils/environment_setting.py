@@ -1,10 +1,9 @@
-import os
-import sys
-import venv
 import glob
+import os
 import shutil
 import subprocess
-
+import sys
+import venv
 
 if "cursor.AppImage" in os.path.realpath(sys.executable):
     REAL_PY = "/usr/bin/python3.12"  # путь к системному интерпретатору
@@ -26,6 +25,48 @@ def create_virtualenv(venv_dir):
         symlinks=False,
         upgrade_deps=True,  # Python ≥3.10
     )
+
+
+def command_exists(cmd_name: str) -> bool:
+    return shutil.which(cmd_name) is not None
+
+
+def install_dependencies_with_poetry(venv_python: str) -> bool:
+    """Пытается установить зависимости через Poetry в указанное .venv.
+
+    - Привязывает Poetry к интерпретатору из .venv
+    - Выполняет `poetry install` (по умолчанию с --no-root)
+    - Поддерживает переменные окружения:
+      - POETRY_WITH_GROUPS="dev,test" — добавит `--with dev,test`
+      - POETRY_NO_ROOT="1" — принудительно добавит `--no-root` (по умолчанию и так True)
+    Возвращает True, если установка через Poetry прошла успешно, иначе False.
+    """
+    if not command_exists("poetry"):
+        return False
+
+    print("Найден Poetry. Привязываю интерпретатор и устанавливаю зависимости...")
+    try:
+        # Привязать Poetry к интерпретатору из .venv
+        subprocess.check_call(["poetry", "env", "use", venv_python])
+
+        install_cmd = ["poetry", "install"]
+
+        # Группы зависимостей
+        groups_env = os.environ.get("POETRY_WITH_GROUPS")
+        if groups_env:
+            install_cmd += ["--with", groups_env]
+
+        # По умолчанию не устанавливаем сам проект (package-mode=false в этом проекте)
+        no_root_env = os.environ.get("POETRY_NO_ROOT")
+        if no_root_env is None or no_root_env not in ("0", "false", "False"):
+            install_cmd += ["--no-root"]
+
+        subprocess.check_call(install_cmd)
+        print("Зависимости установлены через Poetry.")
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Ошибка установки через Poetry: {e}")
+        return False
 
 
 def setup_environment():
@@ -64,28 +105,29 @@ def setup_environment():
         )
         sys.exit(1)  # Выходим, так как pip не может быть обновлен/найден
 
-    # Установка зависимостей из requirements.txt, если файл существует
+    # Установка зависимостей: сначала пытаемся через Poetry, затем fallback на requirements.txt
+    used_poetry = False
+    if os.path.exists("pyproject.toml"):
+        print(
+            "Обнаружен pyproject.toml. Пытаюсь установить зависимости через Poetry..."
+        )
+        used_poetry = install_dependencies_with_poetry(venv_python)
+        if not used_poetry:
+            print(
+                "Poetry недоступен или произошла ошибка. Перехожу к установке через requirements.txt, если он есть."
+            )
+
     requirements_file = "requirements.txt"
-    if os.path.exists(requirements_file):
+    if not used_poetry and os.path.exists(requirements_file):
         print("Устанавливаю зависимости из", requirements_file)
         subprocess.check_call(
             [venv_python, "-m", "pip", "install", "-r", requirements_file]
         )
-
-        # Проверяем, есть ли playwright в зависимостях, и устанавливаем браузеры
-        with open(requirements_file, "r", encoding="utf-8") as f:
-            dependencies = f.read().splitlines()
-
-        if any("playwright" in dep.lower() for dep in dependencies):
-            print("Playwright найден в зависимостях. Устанавливаю/обновляю браузеры...")
-            try:
-                subprocess.check_call([venv_python, "-m", "playwright", "install"])
-                print("Браузеры Playwright успешно установлены/обновлены.")
-            except subprocess.CalledProcessError as e:
-                print(f"Ошибка при установке браузеров Playwright: {e}")
-                sys.exit(1)  # Выход, если установка браузеров не удалась
     else:
-        print(f"Файл {requirements_file} не найден, установка зависимостей пропущена.")
+        if not used_poetry:
+            print(
+                f"Файл {requirements_file} не найден, установка зависимостей пропущена."
+            )
 
     # Обработка файлов с расширением .example
     example_files = glob.glob("*.example") + glob.glob(".*.example")

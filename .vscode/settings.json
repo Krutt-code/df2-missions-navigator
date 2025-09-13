@@ -1,5 +1,5 @@
 {
-    "python.pythonPath": "/home/kukuruzka/CODE/code_python/parsing/marketplace_parser_Alexander/.venv/bin/python",
+    "python.pythonPath": "/home/kukuruzka/CODE/code_python/df2-missions-navigator/.venv/bin/python",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.formatOnSave": true,
