@@ -14,6 +14,7 @@ class Selectors:
 class MissionsExtractor:
     """Извлечение миссий из страницы"""
 
+    SITE_URL = "https://df2profiler.com/gamemap/"
     _selectors = Selectors
     _map_x_coord_to_level = {
         **{i: 1 for i in range(1, 6)},
@@ -107,6 +108,7 @@ class MissionsExtractor:
                 target=target,
                 building_location=building_location,
                 customer=customer,
+                site=MissionsExtractor.SITE_URL,
             )
 
         missions = soup.select(MissionsExtractor._selectors.MISSIONS)

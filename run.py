@@ -1,18 +1,30 @@
 import asyncio
 from pprint import pprint
 
-from src.df2_missions.parsers.df2profiler_gamemap import DF2ProfilerGamemapParser
+from src.df2_missions.missions import DF2Missions
+from src.df2_missions.schemas import BuildingLocation
 
 
 async def main():
-    parser = DF2ProfilerGamemapParser()
-    # missions = await parser.get_missions_list()
+    df2_missions = DF2Missions()
+    map = await df2_missions.get_df2profiler_map()
 
-    # for mission in missions:
-    #     print(mission.model_dump_json(indent=4))
-
-    map = await parser.map_data()
-    pprint(map, indent=4)
+    pprint(map.get_buildings_by_coords(4, 4), indent=4)
+    pprint(
+        map.get_cell_for_building(
+            BuildingLocation(name="", district="Ravenwall Heights", x=4, y=4, level=1)
+        ),
+        indent=4,
+    )
+    pprint(
+        map.get_cell_for_building(
+            BuildingLocation(
+                name="Payne Residence",
+                district="Lerwillbury",
+            )
+        ),
+        indent=4,
+    )
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ class CardExtractor:
 
         def extract_map_rows(map_table: BS) -> list[BS]:
             """Извлечение строк карты"""
-            return map_table.select("tr")
+            return map_table.select(CardExtractor._selectors.MAP_TABLE_ROW)
 
         def extract_map_cells(map_row: BS) -> list[BS]:
             """Извлечение ячеек карты"""
@@ -31,17 +31,24 @@ class CardExtractor:
         def extract_cell_data(map_cell: BS) -> MapDF2Cell:
             """Извлечение данных ячейки карты"""
 
+            cell_x = map_cell.get("data-xcoord")
+            cell_y = map_cell.get("data-ycoord")
+            cell_level = map_cell.get("data-level")
+            cell_district = map_cell.get("data-district")
+            cell_types = map_cell.get("data-types").split(",")
+
             cell = MapDF2Cell(
-                x=map_cell.get("data-xcoord"),
-                y=map_cell.get("data-ycoord"),
-                level=map_cell.get("data-level"),
-                district=map_cell.get("data-district"),
-                types=map_cell.get("data-types").split(","),
+                x=cell_x,
+                y=cell_y,
+                level=cell_level,
+                district=cell_district,
+                types=cell_types,
             )
 
             buildings = map_cell.get("data-buildings").split(",")
             for building in buildings:
-                cell.add_building(building.strip())
+                if building.strip():
+                    cell.add_building(building.strip())
 
             return cell
 
@@ -53,6 +60,8 @@ class CardExtractor:
             map_cells = extract_map_cells(map_row)
             for map_cell in map_cells:
                 cell = extract_cell_data(map_cell)
+                if not cell.buildings:
+                    continue
                 map.add_cell(cell)
 
         return map
