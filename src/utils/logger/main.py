@@ -1,8 +1,6 @@
 """
 Лёгкий инструмент логирования.
 
-• Файл журнала создаётся один раз при первом импорте модуля: logs/YYYYMMDD_HHMMSS.log
-• Никаких env-параметров и чтения argv.
 • Поддерживает:
     get_logger(name)          – любой произвольный логгер
     get_function_logger(func) – логгер функции/метода
@@ -15,9 +13,7 @@ import contextvars
 import logging
 from pathlib import Path
 
-from concurrent_log_handler import (
-    ConcurrentRotatingFileHandler,  # потокобезопасное вращение
-)
+from concurrent_log_handler import ConcurrentRotatingFileHandler
 
 # ──────────────────────────────
 # Параметры по умолчанию

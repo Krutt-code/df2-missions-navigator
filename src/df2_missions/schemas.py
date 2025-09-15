@@ -1,73 +1,38 @@
-from enum import StrEnum
-from typing import Optional
+from typing import Optional, Union
 
+import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
-"""
-Нужно оставить только уникальные типы миссий.
-
-Bring Items
-Find Item
-Sell Item
-Collect Items
-Find Person
-Kill Boss
-Kill Infected
-Exterminate
-Loot Buildings
-Talk to NPC
-Clear Escape
-Complete Challenges
-Complete Missions
-Escape Stalker
-Scrap
-UNKNOWN
-
-Buy Item                -> Bring Items
-Find Items              -> Find Item
-Challenges              -> Complete Challenges
-Complete Mission        -> Complete Missions
-Locate / Contact Person -> Find Person
-Loot                    -> Loot Buildings
-Loot Search             -> Loot Buildings
-Equip                   -> UNKNOWN
-"""
-
-DISTRICTS = (
-    "Ravenwall Heights",
-    "Albandale Park",
-    "Overwood",
-    "Greywood",
-    "Lerwillbury",
-    "Dallbow",
-    "Coopertown",
-    "Richbow Hunt",
-    "Duntsville",
-    "Archbrook",
-    "West Moledale",
-    "Dawnhill",
-    "Haverbrook",
-    "South Moorhurst",
-    "Wolfstable",
-)
+from src.df2_missions.enums import AvanpostType, BuildingType, District, MissionType
 
 
-class District(StrEnum):
-    RAVENWALL_HEIGHTS = "Ravenwall Heights"
-    ALBANDALE_PARK = "Albandale Park"
-    OVERWOOD = "Overwood"
-    GREYWOOD = "Greywood"
-    LERWILLBURY = "Lerwillbury"
-    DALLBOW = "Dallbow"
-    COOPERTOWN = "Coopertown"
-    RICHBOW_HUNT = "Richbow Hunt"
-    DUNTSVILLE = "Duntsville"
-    ARCHBROOK = "Archbrook"
-    WEST_MOLEDALE = "West Moledale"
-    DAWNHILL = "Dawnhill"
-    HAVERBROOK = "Haverbrook"
-    SOUTH_MOORHURST = "South Moorhurst"
-    WOLFSTABLE = "Wolfstable"
+def _to_building_enum(value: object) -> object:
+    """Приведение типа здания к Enum по коду (NAME) или по значению ("Label").
+    Неизвестные значения возвращаются как исходная строка или None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (BuildingType, AvanpostType)):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        code = s.upper()
+        # По имени (коду) ENUM
+        for enum_cls in (BuildingType, AvanpostType):
+            try:
+                return enum_cls[code]
+            except KeyError:
+                pass
+        # По значению (label)
+        for enum_cls in (BuildingType, AvanpostType):
+            for member in enum_cls:
+                if s == member.value:
+                    return member
+        # Неизвестное значение оставляем строкой
+        return s
+    return value
 
 
 class BuildingLocation(BaseModel):
@@ -78,7 +43,7 @@ class BuildingLocation(BaseModel):
     x: Optional[int] = None
     y: Optional[int] = None
     level: Optional[int] = None
-    building_type: Optional[str] = None
+    building_type: Optional[Union[BuildingType, AvanpostType, str]] = None
 
     @field_validator("district", mode="before")
     @classmethod
@@ -91,6 +56,11 @@ class BuildingLocation(BaseModel):
                 if v == district.value or v == district.value.replace(" ", ""):
                     return district
         return v
+
+    @field_validator("building_type", mode="before")
+    @classmethod
+    def _validate_building_type(cls, v: object) -> object:
+        return _to_building_enum(v)
 
     def merge(self, other: Optional["BuildingLocation"]) -> "BuildingLocation":
         """Соединение локаций. Берем непустые поля, координаты/уровень приоритетно с числовыми значениями."""
@@ -117,45 +87,6 @@ class BuildingLocation(BaseModel):
         if not isinstance(other, BuildingLocation):
             return False
         return self.__str__() == other.__str__()
-
-
-MISSION_TYPES = (
-    "Bring Items",
-    "Find Item",
-    "Sell Item",
-    "Collect Items",
-    "Find Person",
-    "Kill Boss",
-    "Kill Infected",
-    "Exterminate",
-    "Loot Buildings",
-    "Talk to NPC",
-    "Clear Escape",
-    "Complete Challenges",
-    "Complete Missions",
-    "Escape Stalker",
-    "Scrap",
-    "UNKNOWN",
-)
-
-
-class MissionType(StrEnum):
-    BRING_ITEMS = "Bring Items"
-    FIND_ITEM = "Find Item"
-    SELL_ITEM = "Sell Item"
-    COLLECT_ITEMS = "Collect Items"
-    FIND_PERSON = "Find Person"
-    KILL_BOSS = "Kill Boss"
-    KILL_INFECTED = "Kill Infected"
-    EXTERMINATE = "Exterminate"
-    LOOT_BUILDINGS = "Loot Buildings"
-    TALK_TO_NPC = "Talk to NPC"
-    CLEAR_ESCAPE = "Clear Escape"
-    COMPLETE_CHALLENGES = "Complete Challenges"
-    COMPLETE_MISSIONS = "Complete Missions"
-    ESCAPE_STALKER = "Escape Stalker"
-    SCRAP = "Scrap"
-    UNKNOWN = "UNKNOWN"
 
 
 class Target(BaseModel):
@@ -386,7 +317,7 @@ class MapDF2Cell(BaseModel):
     level: int
     buildings: list[BuildingLocation] = Field(default_factory=list)
     district: District
-    types: list[str] = Field(default_factory=list)
+    types: list[Union[BuildingType, AvanpostType, str]] = Field(default_factory=list)
 
     @field_validator("district", mode="before")
     @classmethod
@@ -399,79 +330,226 @@ class MapDF2Cell(BaseModel):
                     return district
         return v
 
+    @field_validator("types", mode="before")
+    @classmethod
+    def _validate_types(cls, v: object) -> object:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return [_to_building_enum(i) for i in v if i not in (None, "")]
+        if isinstance(v, str):
+            items = [i.strip() for i in v.split(",")]
+            return [_to_building_enum(i) for i in items if i]
+        return [_to_building_enum(v)]
+
     def add_building(self, building_name: str):
-        """Добавление здания в ячейку"""
-        if "(" in building_name:
-            building_type = building_name.split("(")[1].split(")")[0].strip()
+        """Добавление здания в ячейку. Формат источника: "Name (TYPE)".
+        TYPE маппится к Enum по коду (NAME) или по значению. Неизвестные значения сохраняются как строка.
+        """
+        raw = building_name.strip()
+        if "(" in raw and ")" in raw and raw.rfind("(") < raw.rfind(")"):
+            type_part = raw.split("(")[-1].split(")")[0].strip()
         else:
-            building_type = None
-        building_name = building_name.split("(")[0].strip()
+            type_part = None
+        name_part = raw.split("(")[0].strip()
+        norm_type = _to_building_enum(type_part) if type_part else None
         self.buildings.append(
             BuildingLocation(
-                name=building_name,
+                name=name_part,
                 district=self.district,
                 x=self.x,
                 y=self.y,
                 level=self.level,
-                building_type=building_type,
+                building_type=norm_type,
             )
         )
 
 
 class MapDF2(BaseModel):
-    """Карта"""
+    """Карта DF2.
+
+    Оси координат 1-based. Предоставляет O(1) доступ к ячейкам по координатам и по (name, district)
+    через ленивые индексы с инвалидацией при модификациях.
+    """
 
     cells: list[MapDF2Cell] = Field(default_factory=list)
 
+    # Ленивая индексация (служебные поля не сериализуются)
+    idx_coords_to_cell: dict[tuple[int, int], MapDF2Cell] = Field(
+        default_factory=dict, exclude=True
+    )
+    idx_name_district_to_cells: dict[tuple[str, str], list[MapDF2Cell]] = Field(
+        default_factory=dict, exclude=True
+    )
+    max_x: int = Field(default=0, exclude=True)
+    max_y: int = Field(default=0, exclude=True)
+    indexes_built: bool = Field(default=False, exclude=True)
+
+    # Константы
+
+    MAP_X_COORD_TO_LEVEL: dict[int, int] = {
+        **{i: 1 for i in range(1, 6)},
+        **{i: 5 for i in range(6, 8)},
+        **{i: 10 for i in range(8, 10)},
+        **{i: 15 for i in range(10, 13)},
+        **{i: 20 for i in range(13, 15)},
+        **{i: 25 for i in range(15, 17)},
+        **{i: 30 for i in range(17, 19)},
+        **{i: 35 for i in range(19, 22)},
+        **{i: 40 for i in range(22, 24)},
+        **{i: 45 for i in range(24, 26)},
+        **{i: 50 for i in range(26, 31)},
+    }
+
+    # ───── Индексация ─────
+    @staticmethod
+    def _normalize_name(value: str) -> str:
+        return " ".join((value or "").strip().lower().split())
+
+    @staticmethod
+    def _district_value(d: Union[District, str]) -> str:
+        return d.value if isinstance(d, District) else str(d)
+
+    def _touch(self) -> None:
+        self.indexes_built = False
+
+    def _ensure_indexes(self) -> None:
+        if self.indexes_built:
+            return
+        self.idx_coords_to_cell.clear()
+        self.idx_name_district_to_cells.clear()
+        self.max_x = 0
+        self.max_y = 0
+        for cell in self.cells:
+            # Координаты
+            self.idx_coords_to_cell[(cell.x, cell.y)] = cell
+            if cell.x > self.max_x:
+                self.max_x = cell.x
+            if cell.y > self.max_y:
+                self.max_y = cell.y
+            # Индекс по (name, district)
+            for b in cell.buildings:
+                key = (self._normalize_name(b.name), self._district_value(b.district))
+                self.idx_name_district_to_cells.setdefault(key, []).append(cell)
+            # Если здание отсутствует, индекс по district не пополняем
+        # Детализация порядка выборки: сортируем списки по (x, y)
+        for key, lst in self.idx_name_district_to_cells.items():
+            lst.sort(key=lambda c: (c.x, c.y))
+        self.indexes_built = True
+
+    # ───── Базовые свойства ─────
     @property
     def building_name_to_cell(self) -> dict[str, MapDF2Cell]:
-        """Все здания на карте, сгруппированные по имени и квадрату"""
-        buildings = {}
+        """Сопоставление "Name, District" -> MapDF2Cell.
+        При наличии дубликатов в пределах района выбирается детерминированно первая
+        ячейка по минимуму (x, y). Для работы использует внутренний индекс.
+        """
+        self._ensure_indexes()
+        result: dict[str, MapDF2Cell] = {}
         for cell in self.cells:
-            for building in cell.buildings:
-                buildings[building.__str__()] = cell
-        return buildings
+            district_str = self._district_value(cell.district)
+            for b in cell.buildings:
+                key_str = f"{b.name}, {district_str}"
+                # Берём минимальную по (x,y)
+                current = result.get(key_str)
+                if current is None or (cell.x, cell.y) < (current.x, current.y):
+                    result[key_str] = cell
+        return result
+
+    @property
+    def building_name_to_cells(self) -> dict[str, list[MapDF2Cell]]:
+        """Сопоставление "Name, District" -> список ячеек с таким зданием в районе.
+        Порядок детерминирован: отсортировано по (x, y).
+        """
+        self._ensure_indexes()
+        result: dict[str, list[MapDF2Cell]] = {}
+        for cell in self.cells:
+            district_str = self._district_value(cell.district)
+            for b in cell.buildings:
+                key_str = f"{b.name}, {district_str}"
+                result.setdefault(key_str, []).append(cell)
+        for key in result:
+            # удаляем дубликаты, сортируем
+            uniq = {(c.x, c.y): c for c in result[key]}
+            result[key] = sorted(uniq.values(), key=lambda c: (c.x, c.y))
+        return result
 
     @property
     def map_size(self) -> tuple[int, int]:
-        """Размер карты
-        Возвращает (x, y)
+        """Размер карты (x, y). Для пустой карты возвращает (0, 0).
+        Оси координат 1-based.
         """
-        return (
-            max(cell.x for cell in self.cells),
-            max(cell.y for cell in self.cells),
-        )
+        if not self.cells:
+            return (0, 0)
+        self._ensure_indexes()
+        return (self.max_x, self.max_y)
 
     @property
-    def map_list(self) -> list[list[MapDF2Cell]]:
-        """Список ячеек карты [x][y]"""
-        map_list = [[None] * self.map_size[1] for _ in range(self.map_size[0])]
+    def map_list(self) -> list[list[Optional[MapDF2Cell]]]:
+        """Список ячеек карты [x][y]. Оси 1-based. Отсутствующие ячейки — None."""
+        size_x, size_y = self.map_size
+        if size_x == 0 or size_y == 0:
+            return []
+        map_list: list[list[Optional[MapDF2Cell]]] = [
+            [None] * size_y for _ in range(size_x)
+        ]
         for cell in self.cells:
             map_list[cell.x - 1][cell.y - 1] = cell
         return map_list
 
+    @staticmethod
+    def x_coord_to_level(x_coord: int) -> int:
+        """Преобразование координаты X в уровень"""
+
+        return MapDF2._map_x_coord_to_level.get(x_coord, 0)
+
     def get_buildings_by_coords(self, x: int, y: int) -> list[BuildingLocation]:
-        """Здания в ячейке"""
-        cell = self.map_list[x - 1][y - 1]
-        return cell.buildings or []
+        """Здания в ячейке. Если ячейка отсутствует — возвращает пустой список."""
+        cell = self.get_cell(x, y)
+        return cell.buildings if cell else []
 
     def add_cell(self, cell: MapDF2Cell):
-        """Добавление ячейки в карту"""
+        """Добавление ячейки в карту. Помечает индексы как грязные и обновляет габариты."""
         self.cells.append(cell)
+        # Быстрый апдейт габаритов; окончательно подтверждается в _ensure_indexes
+        if cell.x > self.max_x:
+            self.max_x = cell.x
+        if cell.y > self.max_y:
+            self.max_y = cell.y
+        self._touch()
+
+    def get_cell(self, x: int, y: int) -> Optional[MapDF2Cell]:
+        """Получить ячейку по координатам O(1). Оси 1-based."""
+        self._ensure_indexes()
+        return self.idx_coords_to_cell.get((x, y))
 
     def get_cell_for_building(self, building: BuildingLocation) -> Optional[MapDF2Cell]:
         """Найти ячейку карты по локации здания.
 
         Алгоритм:
         1) Если заданы координаты (x, y, level) — ищем точное совпадение ячейки.
-        2) Иначе ищем по имени здания и району в списках зданий ячеек.
+        2) Иначе ищем по имени здания и району в индексах.
         """
         # Попытка точного совпадения по координатам/уровню/району
         if all([_ not in (None, -1) for _ in [building.x, building.y, building.level]]):
-            return self.get_buildings_by_coords(building.x, building.y)
+            return self.get_cell(building.x, building.y)
         # Поиск по имени здания и району
-        building_key = building.__str__()
-        return self.building_name_to_cell.get(building_key)
+        name_norm = self._normalize_name(building.name)
+        district_str = self._district_value(building.district)
+        self._ensure_indexes()
+        cells = self.idx_name_district_to_cells.get((name_norm, district_str))
+        if not cells:
+            return None
+        # Уже отсортировано по (x,y)
+        return cells[0]
+
+    def get_coords(self, loc: BuildingLocation) -> Optional[tuple[int, int]]:
+        if loc.x not in (None, -1) and loc.y not in (None, -1):
+            return loc.x, loc.y
+        cell = self.get_cell_for_building(loc)
+        if cell is None:
+            return None
+        return cell.x, cell.y
 
     def distance_between(
         self, a: BuildingLocation, b: BuildingLocation
@@ -483,18 +561,138 @@ class MapDF2(BaseModel):
         Возвращает None, если определить координаты не удалось.
         """
 
-        def get_coords(loc: BuildingLocation) -> Optional[tuple[int, int]]:
-            if loc.x not in (None, -1) and loc.y not in (None, -1):
-                return loc.x, loc.y
-            cell = self.get_cell_for_building(loc)
-            if cell is None:
-                return None
-            return cell.x, cell.y
-
-        coords_a = get_coords(a)
-        coords_b = get_coords(b)
+        coords_a = self.get_coords(a)
+        coords_b = self.get_coords(b)
         if coords_a is None or coords_b is None:
             return None
         ax, ay = coords_a
         bx, by = coords_b
         return abs(ax - bx) + abs(ay - by)
+
+    def normalize_coords(self, locations: BuildingLocation) -> BuildingLocation:
+        """Нормализация координат зданий."""
+        coords = self.get_coords(locations)
+        if coords is None:
+            return None
+        return BuildingLocation(
+            name=locations.name,
+            district=locations.district,
+            x=coords[0],
+            y=coords[1],
+            level=self.MAP_X_COORD_TO_LEVEL.get(coords[0], 0),
+        )
+
+    # ───── Удобные методы ─────
+    def get_cells_by_filter(
+        self,
+        *,
+        districts: Optional[list[Union[District, str]]] = None,
+        level_range: Optional[tuple[int, int]] = None,
+        types: Optional[list[Union[BuildingType, AvanpostType, str]]] = None,
+    ) -> list[MapDF2Cell]:
+        """Фильтрация ячеек по списку районов, диапазону уровней и типам зданий.
+        Пустые фильтры игнорируются.
+        """
+        self._ensure_indexes()
+        result: list[MapDF2Cell] = []
+
+        allowed_districts: Optional[set[str]] = None
+        if districts:
+            allowed_districts = {self._district_value(d) for d in districts}
+
+        min_level, max_level = (None, None)
+        if level_range is not None:
+            min_level, max_level = level_range
+
+        allowed_types: Optional[set[str]] = None
+        if types:
+
+            def names_values(item: object) -> set[str]:
+                if isinstance(item, (BuildingType, AvanpostType)):
+                    return {item.name, item.value}
+                if isinstance(item, str):
+                    s = item.strip()
+                    return {s, s.upper()}
+                return {str(item)}
+
+            allowed_types = set()
+            for t in types:
+                allowed_types.update(names_values(t))
+
+        for cell in self.cells:
+            # district
+            if allowed_districts is not None:
+                if self._district_value(cell.district) not in allowed_districts:
+                    continue
+            # level
+            if min_level is not None and cell.level < min_level:
+                continue
+            if max_level is not None and cell.level > max_level:
+                continue
+            # types
+            if allowed_types is not None:
+                cell_keys: set[str] = set()
+                for t in cell.types:
+                    if isinstance(t, (BuildingType, AvanpostType)):
+                        cell_keys.update((t.name, t.value))
+                    elif isinstance(t, str):
+                        cell_keys.update((t, t.upper()))
+                if cell_keys.isdisjoint(allowed_types):
+                    continue
+            result.append(cell)
+        return result
+
+    def to_cells_df(self):  # type: ignore[override]
+        """Опциональная проекция ячеек в pandas.DataFrame."""
+        rows = []
+        for c in self.cells:
+            rows.append(
+                {
+                    "x": c.x,
+                    "y": c.y,
+                    "level": c.level,
+                    "district": self._district_value(c.district),
+                    "types": [
+                        (
+                            t.value
+                            if isinstance(t, (BuildingType, AvanpostType))
+                            else str(t)
+                        )
+                        for t in (c.types or [])
+                    ],
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def to_buildings_df(self):  # type: ignore[override]
+        """Опциональная проекция зданий в pandas.DataFrame.
+        Колонки: name, district, x, y, level, building_type, cell_types
+        """
+        rows = []
+        for c in self.cells:
+            cell_types = [
+                t.value if isinstance(t, (BuildingType, AvanpostType)) else str(t)
+                for t in (c.types or [])
+            ]
+            district_str = self._district_value(c.district)
+            for b in c.buildings or []:
+                rows.append(
+                    {
+                        "name": b.name,
+                        "district": district_str,
+                        "x": c.x,
+                        "y": c.y,
+                        "level": c.level,
+                        "building_type": (
+                            b.building_type.value
+                            if isinstance(b.building_type, (BuildingType, AvanpostType))
+                            else (
+                                None
+                                if b.building_type is None
+                                else str(b.building_type)
+                            )
+                        ),
+                        "cell_types": cell_types,
+                    }
+                )
+        return pd.DataFrame(rows)

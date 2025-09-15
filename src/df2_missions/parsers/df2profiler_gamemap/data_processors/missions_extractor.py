@@ -16,25 +16,6 @@ class MissionsExtractor:
 
     SITE_URL = "https://df2profiler.com/gamemap/"
     _selectors = Selectors
-    _map_x_coord_to_level = {
-        **{i: 1 for i in range(1, 6)},
-        **{i: 5 for i in range(6, 8)},
-        **{i: 10 for i in range(8, 10)},
-        **{i: 15 for i in range(10, 13)},
-        **{i: 20 for i in range(13, 15)},
-        **{i: 25 for i in range(15, 17)},
-        **{i: 30 for i in range(17, 19)},
-        **{i: 35 for i in range(19, 22)},
-        **{i: 40 for i in range(22, 24)},
-        **{i: 45 for i in range(24, 26)},
-        **{i: 50 for i in range(26, 31)},
-    }
-
-    @staticmethod
-    def x_coord_to_level(x_coord: int) -> int:
-        """Преобразование координаты X в уровень"""
-
-        return MissionsExtractor._map_x_coord_to_level.get(x_coord, 0)
 
     @staticmethod
     def extract_missions(soup: BeautifulSoup) -> list[Mission]:
@@ -64,9 +45,7 @@ class MissionsExtractor:
                 building_location_district = mission.get("data-district")
                 building_location_x = mission.get("data-xcoord", -1)
                 building_location_y = mission.get("data-ycoord", -1)
-                building_location_level = MissionsExtractor.x_coord_to_level(
-                    int(building_location_x)
-                )
+                building_location_level = mission.get("data-level", 0)
                 return BuildingLocation(
                     name=building_name,
                     district=building_location_district,
@@ -83,9 +62,7 @@ class MissionsExtractor:
             person_building_location_district = giver_lookup.get("data-giverdistrict")
             person_building_location_x = giver_lookup.get("data-xcoord", -1)
             person_building_location_y = giver_lookup.get("data-ycoord", -1)
-            person_building_location_level = MissionsExtractor.x_coord_to_level(
-                int(person_building_location_x)
-            )
+            person_building_location_level = 0
             person_building_location = BuildingLocation(
                 name=person_building_name,
                 district=person_building_location_district,

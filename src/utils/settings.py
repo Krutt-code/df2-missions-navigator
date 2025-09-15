@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     db_name: Optional[str] = None
 
     # Логирование
-    log_level: Optional[str] = "INFO"
+    # log_level: Optional[str] = "INFO"
+    log_level: Optional[str] = "DEBUG"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -112,4 +112,5 @@ class MissionsExtractor:
 
         header_names = extract_header_names(header)
 
-        return [extract_mission(mission, header_names) for mission in mission_rows]
+        missions = [extract_mission(mission, header_names) for mission in mission_rows]
+        return missions
